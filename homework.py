@@ -37,6 +37,9 @@ class UnknownStatus(Exception):
 class EmptyData(Exception):
     pass
 
+class APIProblems(Exception):
+    pass
+
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -58,50 +61,53 @@ def send_message(bot, message):
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
     except Exception as error:
-        logging.error(f'Ошибка API Telegram: {error}')
+        logging.error(f'Ошибка  отправки сообщения в Telegram чат: {error}')
 
 
 def get_api_answer(current_timestamp):
     """Получение ответов с Яндекс.Практикум."""
     timestamp = current_timestamp or int(time.time())
     params = {'from_date': timestamp}
-    response = requests.get(ENDPOINT, headers=HEADERS, params=params)
-    if response.status_code == HTTPStatus.OK:
-        return response.json()
-    else:
-        raise HTTPResponseNot200('Сервер не отвечает')
-
+    try:
+        response = requests.get(ENDPOINT, headers=HEADERS, params=params)
+    except requests.ConnectionError as request_error:
+        message = f'Код ответа API: {request_error}'
+        logger.error(message)
+        raise ConnectionError(message)
+    return response.json()
 
 def check_response(response):
     """Проверка корректности ответов API."""
-    if type(response) is not dict:
-        raise TypeError('response не является словарем')
-    elif response == []:
-        raise EmptyData(f'Никаких обновлений в статусе нет')
-    elif not response['homeworks']:
-        raise EmptyData(f'ответ от API не содержит ключа')
-
     try:
         homeworks = response['homeworks']
         if homeworks is True:
             return homeworks
     except Exception as error:
-        logging.error(f'В ответе API нет работ: {error}')
+        if type(response) is not dict:
+            raise TypeError('response не является словарем')
+        elif response == []:
+            raise EmptyData(f'Никаких обновлений в статусе нет')
+        elif not response['homeworks']:
+            raise EmptyData(f'ответ от API не содержит ключа')
+        elif response.status_code != 200:
+            raise HTTPResponseNot200('API отвечает с ошибкой')
+        logging.error(f'В ответе API ошибки: {error}')
+
 
 
 def parse_status(homework):
     homework_name = homework['homework_name']
-    homework_status = homework.get('status')
-    if homework_status is None:
-        raise EmptyData(f'Ошибка: пустой статус')
+    homework_status = homework['status']
+    try:
+        verdict = homework_status
+        return f'Изменился статус проверки работы {homework_name}. {verdict}'
+    except:
+        if homework_status is None:
+            raise EmptyData(f'Ошибка: пустой статус')
+        if homework_name is None:
+            raise EmptyData(f'Никаких обновлений в статусе нет')
     
-    if homework_name is None:
-        raise EmptyData(f'Никаких обновлений в статусе нет')
     
-    for status in HOMEWORK_STATUSES.keys():
-        verdict = HOMEWORK_STATUSES[status]
-        return(verdict)
-    return f'Изменился статус проверки работы {homework_name}. {verdict}'
 
 
 def check_tokens():
@@ -128,6 +134,10 @@ def main():
             response = get_api_answer(current_timestamp)
             homeworks = check_response(response)
             if not homeworks:
+                logger.debug('Новых статусов по домашним работам нет.')
+                message = 'Новых статусов по домашним работам нет.'
+                send_message(bot, message)
+            else:
                 message = parse_status(homeworks)
                 send_message(bot, message)
             current_timestamp = int(time.time())
