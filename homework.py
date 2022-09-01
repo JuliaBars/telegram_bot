@@ -1,12 +1,13 @@
 import os
+import sys
 import logging
-import telegram
+# import telegram
 import time
-from time import strftime
+# from time import strftime
 from telegram import Bot
 from http import HTTPStatus
 
-from logging.handlers import RotatingFileHandler
+# from logging.handlers import StreamHandler
 
 import requests
 
@@ -28,16 +29,28 @@ HOMEWORK_STATUSES = {
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
 }
 
+
 class HTTPResponseNot200(Exception):
+    """Сервер отвечает с ошибкой."""
+
     pass
+
 
 class UnknownStatus(Exception):
+    """Неизвестный статус ревью."""
+
     pass
+
 
 class EmptyData(Exception):
+    """Словарь с данными пустой."""
+
     pass
 
+
 class APIProblems(Exception):
+    """API Яндекса работает с ошибкой."""
+
     pass
 
 
@@ -51,7 +64,7 @@ formatter = logging.Formatter(
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-handler = RotatingFileHandler('my_logger.log', maxBytes=50000000, backupCount=5)
+handler = logging.StreamHandler(sys.stdout)
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
@@ -61,7 +74,7 @@ def send_message(bot, message):
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
     except Exception as error:
-        logging.error(f'Ошибка  отправки сообщения в Telegram чат: {error}')
+        logging.error(f'Ошибка отправки сообщения в Telegram чат: {error}')
 
 
 def get_api_answer(current_timestamp):
@@ -70,47 +83,52 @@ def get_api_answer(current_timestamp):
     params = {'from_date': timestamp}
     try:
         response = requests.get(ENDPOINT, headers=HEADERS, params=params)
-    except requests.ConnectionError as request_error:
+    except Exception as request_error:
         message = f'Код ответа API: {request_error}'
         logger.error(message)
-        raise ConnectionError(message)
+    if response.status_code != HTTPStatus.OK:
+        raise HTTPResponseNot200(message)
     return response.json()
+
 
 def check_response(response):
     """Проверка корректности ответов API."""
+    if type(response) is not dict:
+        raise TypeError('response не является словарем')
     try:
         homeworks = response['homeworks']
-        if homeworks is True:
+        if not isinstance(homeworks, list):
+            raise TypeError('homeworks не является list')
+        elif homeworks:
             return homeworks
     except Exception as error:
-        if type(response) is not dict:
-            raise TypeError('response не является словарем')
-        elif response == []:
-            raise EmptyData(f'Никаких обновлений в статусе нет')
+        if response == []:
+            raise EmptyData('Никаких обновлений в статусе нет')
         elif not response['homeworks']:
-            raise EmptyData(f'ответ от API не содержит ключа')
-        elif response.status_code != 200:
+            raise EmptyData('ответ от API не содержит ключа')
+        elif response.status_code != HTTPStatus.OK:
             raise HTTPResponseNot200('API отвечает с ошибкой')
         logging.error(f'В ответе API ошибки: {error}')
 
 
-
 def parse_status(homework):
+    """Проверяем статус ответа API."""
     homework_name = homework['homework_name']
     homework_status = homework['status']
     try:
-        verdict = homework_status
-        return f'Изменился статус проверки работы {homework_name}. {verdict}'
-    except:
+        verdict = HOMEWORK_STATUSES.get('homework_status')
+    except Exception:
         if homework_status is None:
-            raise EmptyData(f'Ошибка: пустой статус')
+            raise EmptyData('Ошибка: пустой статус')
         if homework_name is None:
-            raise EmptyData(f'Никаких обновлений в статусе нет')
-    
-    
+            raise EmptyData('Ошибка: нет домашних работ')
+        if homework_status not in HOMEWORK_STATUSES[homework_status]:
+            raise UnknownStatus('Неизвестный статус ревью')
+    return f'Изменился статус проверки работы {homework_name}. {verdict}'
 
 
 def check_tokens():
+    """Проверяем токены."""
     tokens = {
         'practicum_token': PRACTICUM_TOKEN,
         'telegram_token': TELEGRAM_TOKEN,
