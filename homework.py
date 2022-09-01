@@ -1,17 +1,14 @@
+import logging
 import os
 import sys
-import logging
-# import telegram
 import time
-# from time import strftime
-from telegram import Bot
 from http import HTTPStatus
 
-# from logging.handlers import StreamHandler
-
 import requests
-
 from dotenv import load_dotenv
+from telegram import Bot
+
+from exceptions import EmptyData, HTTPResponseNot200
 
 load_dotenv(override=True)
 
@@ -30,33 +27,10 @@ HOMEWORK_STATUSES = {
 }
 
 
-class HTTPResponseNot200(Exception):
-    """Сервер отвечает с ошибкой."""
-
-    pass
-
-
-class UnknownStatus(Exception):
-    """Неизвестный статус ревью."""
-
-    pass
-
-
-class EmptyData(Exception):
-    """Словарь с данными пустой."""
-
-    pass
-
-
-class APIProblems(Exception):
-    """API Яндекса работает с ошибкой."""
-
-    pass
-
-
 logging.basicConfig(
-    level=logging.DEBUG,
-    filename='my_logger.log',
+    level=logging.INFO,
+    filename='my_logs.log',
+    format='%(asctime)s, %(levelname)s, %(message)s, %(name)s'
 )
 formatter = logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -65,14 +39,15 @@ formatter = logging.Formatter(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler(sys.stdout)
-handler.setFormatter(formatter)
 logger.addHandler(handler)
+handler.setFormatter(formatter)
 
 
 def send_message(bot, message):
     """Отправка сообщений в Telegram."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
+        logging.info('Сообщение в Телеграм отправлено')
     except Exception as error:
         logging.error(f'Ошибка отправки сообщения в Telegram чат: {error}')
 
@@ -105,26 +80,29 @@ def check_response(response):
         if response == []:
             raise EmptyData('Никаких обновлений в статусе нет')
         elif not response['homeworks']:
-            raise EmptyData('ответ от API не содержит ключа')
-        elif response.status_code != HTTPStatus.OK:
-            raise HTTPResponseNot200('API отвечает с ошибкой')
+            logger.error('ответ API не содержит ключа')
+            raise EmptyData('ответ API не содержит ключа')
         logging.error(f'В ответе API ошибки: {error}')
 
 
 def parse_status(homework):
     """Проверяем статус ответа API."""
-    homework_name = homework['homework_name']
-    homework_status = homework['status']
-    try:
-        verdict = HOMEWORK_STATUSES.get('homework_status')
-    except Exception:
-        if homework_status is None:
-            raise EmptyData('Ошибка: пустой статус')
-        if homework_name is None:
-            raise EmptyData('Ошибка: нет домашних работ')
-        if homework_status not in HOMEWORK_STATUSES[homework_status]:
-            raise UnknownStatus('Неизвестный статус ревью')
-    return f'Изменился статус проверки работы {homework_name}. {verdict}'
+    homework_name = homework.get('homework_name')
+    homework_status = homework.get('status')
+    verdict = HOMEWORK_STATUSES.get(homework_status)
+
+    if not homework_name:
+        raise KeyError('Ошибка: нет домашних работ')
+
+    if not homework_status:
+        logger.debug('отсутствие в ответе новых статусов')
+        raise EmptyData('Ошибка: пустой статус')
+
+    if not verdict:
+        logger.error('недокументированный статус домашней работы')
+        raise TypeError('недокументированный статус домашней работы')
+
+    return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
 def check_tokens():
@@ -136,7 +114,7 @@ def check_tokens():
     }
     for key, value in tokens.items():
         if value is None:
-            logging.error(f'{key} отсутствует')
+            logging.critical(f'{key} отсутствует')
             return False
     return True
 
@@ -153,8 +131,6 @@ def main():
             homeworks = check_response(response)
             if not homeworks:
                 logger.debug('Новых статусов по домашним работам нет.')
-                message = 'Новых статусов по домашним работам нет.'
-                send_message(bot, message)
             else:
                 message = parse_status(homeworks)
                 send_message(bot, message)
