@@ -45,9 +45,10 @@ handler.setFormatter(formatter)
 
 def send_message(bot, message):
     """Отправка сообщений в Telegram."""
+    logging.info(f'Бот {bot} попытался отправить сообщение: {message}')
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
-        logging.info('Сообщение в Телеграм отправлено')
+        logging.info(f'Сообщение в Телеграм отправлено: {message}')
     except Exception as error:
         logging.error(f'Ошибка отправки сообщения в Telegram чат: {error}')
 
@@ -58,8 +59,10 @@ def get_api_answer(current_timestamp):
     params = {'from_date': timestamp}
     try:
         response = requests.get(ENDPOINT, headers=HEADERS, params=params)
+        logging.info(f'Выполнен запрос к API: {response}')
     except Exception as request_error:
-        message = f'Код ответа API: {request_error}'
+        message = (f'Код ответа API: {request_error},'
+                   f'детали запроса: {response}')
         logger.error(message)
     if response.status_code != HTTPStatus.OK:
         raise HTTPResponseNot200(message)
@@ -68,21 +71,18 @@ def get_api_answer(current_timestamp):
 
 def check_response(response):
     """Проверка корректности ответов API."""
-    if type(response) is not dict:
+    logging.info(f'Ответ сервера проверен: {response}')
+    if not isinstance(response, dict):
         raise TypeError('response не является словарем')
-    try:
-        homeworks = response['homeworks']
-        if not isinstance(homeworks, list):
-            raise TypeError('homeworks не является list')
-        elif homeworks:
-            return homeworks
-    except Exception as error:
-        if response == []:
-            raise EmptyData('Никаких обновлений в статусе нет')
-        elif not response['homeworks']:
-            logger.error('ответ API не содержит ключа')
-            raise EmptyData('ответ API не содержит ключа')
-        logging.error(f'В ответе API ошибки: {error}')
+    if not isinstance(response['homeworks'], list):
+        raise TypeError('homeworks не является list')
+    if 'homeworks' not in response:
+        logger.error('ответ API не содержит ключа')
+        raise EmptyData('ответ API не содержит ключа')
+    if response == []:
+        raise EmptyData('Никаких обновлений в статусе нет')
+
+    return response['homeworks']
 
 
 def parse_status(homework):
@@ -124,6 +124,8 @@ def main():
     if check_tokens():
         bot = Bot(token=TELEGRAM_TOKEN)
         current_timestamp = int(time.time())
+    else:
+        sys.exit('Отсутствуют токены переменных окружения')
 
     while True:
         try:
@@ -131,15 +133,17 @@ def main():
             homeworks = check_response(response)
             if not homeworks:
                 logger.debug('Новых статусов по домашним работам нет.')
+                send_message(bot, 'Новых статусов нет, но я работаю')
             else:
                 message = parse_status(homeworks)
                 send_message(bot, message)
             current_timestamp = int(time.time())
-            time.sleep(RETRY_TIME)
 
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             send_message(bot, message)
+
+        finally:
             time.sleep(RETRY_TIME)
 
 
