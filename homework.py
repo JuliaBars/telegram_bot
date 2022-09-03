@@ -50,7 +50,7 @@ def send_message(bot, message):
         bot.send_message(TELEGRAM_CHAT_ID, message)
         logging.info(f'Сообщение в Телеграм отправлено: {message}')
     except Exception as error:
-        logging.error(f'Ошибка отправки сообщения в Telegram чат: {error}')
+        logging.error(f'Ошибка отправки сообщения в Telegram: {error}')
 
 
 def get_api_answer(current_timestamp):
@@ -63,7 +63,7 @@ def get_api_answer(current_timestamp):
     except Exception as request_error:
         message = (f'Код ответа API: {request_error},'
                    f'детали запроса: {response}')
-        logger.error(message)
+        logging.error(message)
     if response.status_code != HTTPStatus.OK:
         raise HTTPResponseNot200(message)
     return response.json()
@@ -71,13 +71,13 @@ def get_api_answer(current_timestamp):
 
 def check_response(response):
     """Проверка корректности ответов API."""
-    logging.info(f'Ответ сервера проверен: {response}')
+    logging.info(f'Ответ сервера: {response}')
     if not isinstance(response, dict):
         raise TypeError('response не является словарем')
     if not isinstance(response['homeworks'], list):
         raise TypeError('homeworks не является list')
     if 'homeworks' not in response:
-        logger.error('ответ API не содержит ключа')
+        logging.error('ответ API не содержит ключа')
         raise EmptyData('ответ API не содержит ключа')
     if response == []:
         raise EmptyData('Никаких обновлений в статусе нет')
@@ -95,11 +95,11 @@ def parse_status(homework):
         raise KeyError('Ошибка: нет домашних работ')
 
     if not homework_status:
-        logger.debug('отсутствие в ответе новых статусов')
+        logging.debug('отсутствие в ответе новых статусов')
         raise EmptyData('Ошибка: пустой статус')
 
     if not verdict:
-        logger.error('недокументированный статус домашней работы')
+        logging.error('недокументированный статус домашней работы')
         raise TypeError('недокументированный статус домашней работы')
 
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
