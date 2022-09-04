@@ -62,7 +62,7 @@ def get_api_answer(current_timestamp):
         logging.info(f'Выполнен запрос к API: {response}')
     except Exception as request_error:
         message = (f'Код ответа API: {request_error},'
-                   f'детали запроса: {response}')
+                   f'детали запроса: {HEADERS}, {params}')
         logging.error(message)
     if response.status_code != HTTPStatus.OK:
         raise HTTPResponseNot200(message)
@@ -74,11 +74,11 @@ def check_response(response):
     logging.info(f'Ответ сервера: {response}')
     if not isinstance(response, dict):
         raise TypeError('response не является словарем')
-    if not isinstance(response['homeworks'], list):
-        raise TypeError('homeworks не является list')
     if 'homeworks' not in response:
         logging.error('ответ API не содержит ключа')
         raise EmptyData('ответ API не содержит ключа')
+    if not isinstance(response['homeworks'], list):
+        raise TypeError('homeworks не является list')
     if response == []:
         raise EmptyData('Никаких обновлений в статусе нет')
 
@@ -121,11 +121,11 @@ def check_tokens():
 
 def main():
     """Основная логика работы бота."""
-    if check_tokens():
-        bot = Bot(token=TELEGRAM_TOKEN)
-        current_timestamp = int(time.time())
-    else:
+    if not check_tokens():
         sys.exit('Отсутствуют токены переменных окружения')
+
+    bot = Bot(token=TELEGRAM_TOKEN)
+    current_timestamp = int(time.time())
 
     while True:
         try:
