@@ -3,6 +3,7 @@ import os
 import sys
 import time
 from http import HTTPStatus
+import traceback
 
 import requests
 from dotenv import load_dotenv
@@ -59,13 +60,14 @@ def get_api_answer(current_timestamp):
     params = {'from_date': timestamp}
     try:
         response = requests.get(ENDPOINT, headers=HEADERS, params=params)
-        logging.info(f'Выполнен запрос к API: {response}')
+        logging.info(f'Выполнен запрос к API: {ENDPOINT}')
+        logging.info(f'PARAMS: {params}')
     except Exception as request_error:
         message = (f'Код ответа API: {request_error},'
                    f'детали запроса: {HEADERS}, {params}')
         logging.error(message)
     if response.status_code != HTTPStatus.OK:
-        raise HTTPResponseNot200(message)
+        raise HTTPResponseNot200('Сайт не отвечает')
     return response.json()
 
 
@@ -87,8 +89,8 @@ def check_response(response):
 
 def parse_status(homework):
     """Проверяем статус ответа API."""
-    homework_name = homework.get('homework_name')
-    homework_status = homework.get('status')
+    homework_name = homework['homework_name']
+    homework_status = homework['status']
     verdict = HOMEWORK_STATUSES.get(homework_status)
 
     if not homework_name:
@@ -130,18 +132,19 @@ def main():
     while True:
         try:
             response = get_api_answer(current_timestamp)
-            homeworks = check_response(response)
-            if not homeworks:
-                logger.debug('Новых статусов по домашним работам нет.')
+            if not check_response(response):
                 send_message(bot, 'Новых статусов нет, но я работаю')
-            else:
-                message = parse_status(homeworks)
-                send_message(bot, message)
+                logger.debug('Новых статусов по домашним работам нет.')
+                continue
+            homeworks = response.get('homeworks')[0]
+            message = parse_status(homeworks)
+            send_message(bot, message)
             current_timestamp = int(time.time())
 
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             send_message(bot, message)
+            print(f"Ошибка: {traceback.format_exc()}")
 
         finally:
             time.sleep(RETRY_TIME)
