@@ -79,18 +79,18 @@ def check_response(response):
     if 'homeworks' not in response:
         logging.error('ответ API не содержит ключа')
         raise EmptyData('ответ API не содержит ключа')
-    if not isinstance(response['homeworks'], list):
+    if not isinstance(response.get('homeworks'), list):
         raise TypeError('homeworks не является list')
     if response == []:
         raise EmptyData('Никаких обновлений в статусе нет')
 
-    return response['homeworks']
+    return response.get('homeworks')
 
 
 def parse_status(homework):
     """Проверяем статус ответа API."""
-    homework_name = homework['homework_name']
-    homework_status = homework['status']
+    homework_name = homework.get('homework_name')
+    homework_status = homework.get('status')
     verdict = HOMEWORK_STATUSES.get(homework_status)
 
     if not homework_name:
