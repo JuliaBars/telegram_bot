@@ -109,26 +109,28 @@ def parse_status(homework):
 
 def check_tokens():
     """Проверяем токены."""
-    tokens = {
-        'practicum_token': PRACTICUM_TOKEN,
-        'telegram_token': TELEGRAM_TOKEN,
-        'telegram_chat_id': TELEGRAM_CHAT_ID,
-    }
-    for key, value in tokens.items():
-        if value is None:
-            logging.critical(f'{key} отсутствует')
-            return False
-    return True
+    return all((PRACTICUM_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_TOKEN))
+    # tokens = {
+    #     'practicum_token': PRACTICUM_TOKEN,
+    #     'telegram_token': TELEGRAM_TOKEN,
+    #     'telegram_chat_id': TELEGRAM_CHAT_ID,
+    # }
+    # for key, value in tokens.items():
+    #     if value is None:
+    #         logging.critical(f'{key} отсутствует')
+    #         return False
+    # return True
 
 
 def main():
     """Основная логика работы бота."""
     if not check_tokens():
+        logging.critical('Переменные окружения отсутствуют')
         sys.exit('Отсутствуют токены переменных окружения')
 
     bot = Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
-
+    previous_message = ''
     while True:
         try:
             response = get_api_answer(current_timestamp)
@@ -138,7 +140,9 @@ def main():
                 continue
             homeworks = response.get('homeworks')[0]
             message = parse_status(homeworks)
-            send_message(bot, message)
+            if message != previous_message:
+                send_message(bot, message)
+                previous_message = message
             current_timestamp = int(time.time())
 
         except Exception as error:
